@@ -54,7 +54,9 @@ export function TasksScreen() {
   const [editingTask, setEditingTask] = useState<ClaudeTask | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dragOverColumn, setDragOverColumn] = useState<TaskColumn | null>(null)
-  const [showDone, setShowDone] = useState(false)
+  // Default to showing the Done column: completed tasks (and their results)
+  // must stay visible, not silently vanish from the board when they finish.
+  const [showDone, setShowDone] = useState(true)
 
   const search = useSearch({ from: '/tasks' })
   const navigate = useNavigate()
