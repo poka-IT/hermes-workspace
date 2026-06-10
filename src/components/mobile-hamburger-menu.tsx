@@ -64,26 +64,14 @@ export const MOBILE_HAMBURGER_NAV_ITEMS = [
     to: '/jobs',
     match: (p: string) => p.startsWith('/jobs'),
   },
-  {
-    id: 'conductor',
-    label: 'Conductor',
-    icon: Rocket01Icon,
-    to: '/conductor',
-    match: (p: string) => p.startsWith('/conductor'),
-  },
+  // Conductor + Swarm removed: native-swarm backend is non-functional in this
+  // deployment (hangs on "spawning workers"). Routes kept so deep links don't 404.
   {
     id: 'operations',
     label: 'Operations',
     icon: UserMultipleIcon,
     to: '/operations',
     match: (p: string) => p.startsWith('/operations'),
-  },
-  {
-    id: 'swarm',
-    label: 'Swarm',
-    icon: UserGroupIcon,
-    to: '/swarm',
-    match: (p: string) => p === '/swarm' || p.startsWith('/swarm2'),
   },
   {
     id: 'echo-studio',

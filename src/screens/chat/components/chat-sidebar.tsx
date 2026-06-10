@@ -17,11 +17,9 @@ import {
   Moon02Icon,
   PencilEdit02Icon,
   PuzzleIcon,
-  Rocket01Icon,
   Search01Icon,
   Settings01Icon,
   Sun02Icon,
-  UserGroupIcon,
   UserMultipleIcon,
 } from '@hugeicons/core-free-icons'
 import { AnimatePresence, motion } from 'motion/react'
@@ -584,9 +582,7 @@ function ChatSidebarComponent({
   const isJobsActive = pathname === '/jobs'
   const isMemoryActive = pathname === '/memory'
   const isTasksActive = pathname === '/tasks'
-  const isConductorActive = pathname === '/conductor'
   const isOperationsActive = pathname === '/operations'
-  const isSwarmActive = pathname === '/swarm' || pathname === '/swarm2'
   const echoStudioEnabled = useSettingsStore(
     (state) => state.settings.experimentalEchoStudio,
   )
@@ -827,26 +823,15 @@ function ChatSidebarComponent({
       label: 'Tasks',
       active: isTasksActive,
     },
-    {
-      kind: 'link',
-      to: '/conductor',
-      icon: Rocket01Icon,
-      label: 'Conductor',
-      active: isConductorActive,
-    },
+    // Conductor + Swarm/Swarm2 removed from nav: the native-swarm backend does
+    // not work in this deployment (hangs on "spawning workers"). Route files
+    // are kept so deep links don't 404, but the broken flows are hidden.
     {
       kind: 'link',
       to: '/operations',
       icon: UserMultipleIcon,
       label: 'Operations',
       active: isOperationsActive,
-    },
-    {
-      kind: 'link',
-      to: '/swarm',
-      icon: UserGroupIcon,
-      label: 'Swarm',
-      active: isSwarmActive,
     },
     ...(echoStudioEnabled
       ? [
