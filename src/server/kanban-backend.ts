@@ -545,6 +545,12 @@ const dashboardProxyBackend: KanbanBackend = {
       assignee: input.assignedWorker?.trim() || undefined,
       status: mapLaneToDashboardStatus(input.status ?? 'backlog'),
       created_by: input.createdBy?.trim() || 'hermes-workspace',
+      // Default the worker into the shared /workspace tree (where the project
+      // repos are cloned) instead of an empty scratch dir, so UI-created tasks
+      // can actually see/operate on the repos. Without this the dispatcher
+      // spawns the worker in an empty scratch workspace.
+      workspace_kind: 'dir',
+      workspace_path: '/workspace',
     })
     return dashboardTaskToCard(task)
   },
