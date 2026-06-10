@@ -521,9 +521,6 @@ export function ChatScreen({
     const key = `claude-thinking-${activeFriendlyId || 'new'}`
     thinkingInitializedByUserRef.current = window.sessionStorage.getItem(key) !== null
   }, [activeFriendlyId])
-  const { alertOpen, alertThreshold, alertPercent, dismissAlert } =
-    useContextAlert()
-
   const pendingStartRef = useRef(false)
   const composerHandleRef = useRef<ChatComposerHandle | null>(null)
   // Idempotency guard prevents duplicate sends on paste/attach double-fire.
@@ -587,6 +584,11 @@ export function ChatScreen({
     historyRefetchInterval: sseConnectionState === 'connected' ? 30_000 : 5_000,
     portableMode: isPortableMode,
   })
+
+  // Scope the context-usage alert to the active session (same key the ContextBar
+  // uses). A session-less poll reads a stale value and falsely fires the modal.
+  const { alertOpen, alertThreshold, alertPercent, dismissAlert } =
+    useContextAlert(resolvedSessionKey || activeCanonicalKey || undefined)
 
   // --- Waiting state management (Issue #43 + #449) ---
   // resolvedSessionKey is now available (defined above from useChatHistory).

@@ -64,7 +64,7 @@ function readPercent(value: unknown): number {
   return 0
 }
 
-export function useContextAlert(): {
+export function useContextAlert(sessionId?: string): {
   alertOpen: boolean
   alertThreshold: number
   alertPercent: number
@@ -81,7 +81,12 @@ export function useContextAlert(): {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch('/api/context-usage')
+      // Always scope the read to the active session — a session-less poll reads
+      // a stale/global value that falsely trips the auto-compaction modal.
+      const url = sessionId
+        ? `/api/context-usage?sessionId=${encodeURIComponent(sessionId)}`
+        : '/api/context-usage'
+      const res = await fetch(url)
       if (!res.ok) return
       const data = (await res.json()) as {
         ok?: boolean
@@ -91,6 +96,10 @@ export function useContextAlert(): {
 
       const currentPercent = readPercent(data.contextPercent)
       setAlertPercent(currentPercent)
+
+      // Guard: never fire the alert on a session-less or zero-token read — the
+      // real per-session usage is unknown/0 here, so a fired modal would be false.
+      if (!sessionId || currentPercent <= 0) return
 
       if (typeof window === 'undefined') return
       const today = getTodayKeyLocal()
@@ -118,7 +127,7 @@ export function useContextAlert(): {
     } catch {
       /* ignore */
     }
-  }, [alertOpen])
+  }, [alertOpen, sessionId])
 
   useEffect(() => {
     if (typeof window === 'undefined') return

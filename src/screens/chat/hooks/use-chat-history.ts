@@ -21,6 +21,31 @@ import type { ChatMessage, HistoryResponse } from '../types'
 const PORTABLE_HISTORY_STORAGE_KEY = 'claude_portable_chat_main'
 const PORTABLE_HISTORY_LIMIT = 100
 
+// Per-session client-mirror key scheme — MUST match the writer in
+// use-realtime-chat-history.ts (sessionMirrorStorageKey).
+const SESSION_MIRROR_KEY_PREFIX = 'claude_chat_mirror_'
+
+/**
+ * STOPGAP (history-not-restored): read the per-session client mirror written by
+ * use-realtime-chat-history.ts. Only used to fill a TRULY EMPTY server result so
+ * live/server data always wins and messages are never duplicated.
+ */
+function readSessionMirror(sessionKey: string): Array<ChatMessage> {
+  if (typeof window === 'undefined') return []
+  if (!sessionKey || sessionKey === 'new') return []
+  try {
+    const raw = window.localStorage.getItem(
+      `${SESSION_MIRROR_KEY_PREFIX}${sessionKey}`,
+    )
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as { messages?: Array<ChatMessage> } | null
+    const messages = Array.isArray(parsed?.messages) ? parsed.messages : []
+    return messages.slice(-PORTABLE_HISTORY_LIMIT)
+  } catch {
+    return []
+  }
+}
+
 type UseChatHistoryInput = {
   activeFriendlyId: string
   activeSessionKey: string
@@ -345,10 +370,26 @@ export function useChatHistory({
         })
         : []
 
-      const serverData = await fetchHistory({
+      let serverData = await fetchHistory({
         sessionKey: sessionKeyForHistory,
         friendlyId: activeFriendlyId,
       })
+
+      // STOPGAP: if the backend returns NO messages for a known session, fall
+      // back to the per-session client mirror so a reload restores the
+      // transcript. Server data always wins — we only fill a truly empty result,
+      // so this can never duplicate live/server messages.
+      if (
+        Array.isArray(serverData.messages) &&
+        serverData.messages.length === 0 &&
+        sessionKeyForHistory &&
+        sessionKeyForHistory !== 'new'
+      ) {
+        const mirrored = readSessionMirror(sessionKeyForHistory)
+        if (mirrored.length > 0) {
+          serverData = { ...serverData, messages: mirrored }
+        }
+      }
 
       let dataWithRecovery = serverData
 

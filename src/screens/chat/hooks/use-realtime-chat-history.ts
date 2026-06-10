@@ -89,6 +89,46 @@ function persistPortableHistory(messages: Array<ChatMessage>) {
   }
 }
 
+// Per-session localStorage mirror key. Shared with use-chat-history.ts's
+// fallback read path — keep the scheme in sync if it changes here.
+export const SESSION_MIRROR_KEY_PREFIX = 'claude_chat_mirror_'
+
+export function sessionMirrorStorageKey(sessionKey: string): string {
+  return `${SESSION_MIRROR_KEY_PREFIX}${sessionKey}`
+}
+
+/**
+ * STOPGAP (history-not-restored): persist the merged transcript per session so a
+ * reload can restore it client-side when the agent backend returns no messages.
+ * Guards against clobbering a non-empty mirror with an empty array.
+ */
+function persistSessionMirror(
+  sessionKey: string,
+  messages: Array<ChatMessage>,
+) {
+  if (typeof window === 'undefined') return
+  if (!sessionKey || sessionKey === 'new') return
+
+  const persistedMessages = messages
+    .filter((message) => message.__streamingStatus !== 'streaming')
+    .slice(-PORTABLE_HISTORY_LIMIT)
+
+  // Never overwrite an existing non-empty mirror with nothing.
+  if (persistedMessages.length === 0) return
+
+  try {
+    window.localStorage.setItem(
+      sessionMirrorStorageKey(sessionKey),
+      JSON.stringify({
+        messages: persistedMessages,
+        updatedAt: Date.now(),
+      }),
+    )
+  } catch {
+    // Ignore persistence failures (quota, private mode, malformed messages).
+  }
+}
+
 const EMPTY_MESSAGES: Array<ChatMessage> = []
 const EMPTY_TOOL_CALLS: Array<{
   id: string
@@ -535,10 +575,16 @@ export function useRealtimeChatHistory({
   }, [effectiveSessionKey, historyMessages, mergeHistoryMessages, lastEventAt])
 
   useEffect(() => {
-    if (!portableMode) return
     if (mergedMessages.length === 0) return
-    persistPortableHistory(mergedMessages)
-  }, [mergedMessages, portableMode])
+    // Keep the existing single-key portable mirror working.
+    if (portableMode) {
+      persistPortableHistory(mergedMessages)
+    }
+    // Always also mirror per session so a reload can restore the transcript
+    // client-side if the backend returns no messages (STOPGAP). The persist
+    // helper guards against overwriting a non-empty mirror with an empty array.
+    persistSessionMirror(effectiveSessionKey, mergedMessages)
+  }, [mergedMessages, portableMode, effectiveSessionKey])
 
   // History has caught up — cleanup realtime buffer outside render
   // DISABLED: This was aggressively clearing realtime messages before history

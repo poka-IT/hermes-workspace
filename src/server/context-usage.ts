@@ -29,6 +29,9 @@ type ResolvedModelContext = {
 }
 
 const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+  // opus-4-8 gets a 1M interactive context window via Claude Code impersonation;
+  // without this entry the substring fallback would resolve it to 200k.
+  'claude-opus-4-8': 1_000_000,
   'claude-opus-4-6': 200_000,
   'claude-opus-4-5': 200_000,
   'claude-sonnet-4-6': 200_000,

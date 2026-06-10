@@ -241,8 +241,37 @@ async function fetchDashboardProfiles(): Promise<{
 
     if (!data.profiles || !Array.isArray(data.profiles)) return null
 
+    // Derive the active profile from the gateway's LIVE state (hermes_home)
+    // rather than the static is_default flag, which does not reflect a runtime
+    // profile switch. hermes_home looks like "/opt/data/profiles/tugger"; take
+    // its basename. Wrapped in try/catch + short timeout so a failed status
+    // fetch falls back cleanly to the old is_default behaviour.
+    let runningProfile: string | undefined
+    try {
+      const statusResponse = await fetch(`${dashboardUrl}/api/status`, {
+        headers,
+        signal: AbortSignal.timeout(3000),
+      })
+      if (statusResponse.ok) {
+        const statusData = (await statusResponse.json()) as {
+          hermes_home?: unknown
+        }
+        if (typeof statusData.hermes_home === 'string') {
+          const segments = statusData.hermes_home
+            .replace(/\/+$/, '') // strip trailing slashes
+            .split('/')
+          const basename = segments[segments.length - 1]
+          if (basename) runningProfile = basename
+        }
+      }
+    } catch {
+      // Status unreachable — fall back to is_default below.
+    }
+
     const activeProfile =
-      data.profiles.find((p) => p.is_default)?.name || 'default'
+      (runningProfile && data.profiles.some((p) => p.name === runningProfile)
+        ? runningProfile
+        : data.profiles.find((p) => p.is_default)?.name) || 'default'
 
     const profiles: Array<ProfileSummary> = data.profiles.map((p) => ({
       name: p.name,
