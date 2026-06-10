@@ -66,7 +66,9 @@ export function TasksScreen() {
   const tasksQuery = useQuery({
     queryKey: [...QUERY_KEY, showDone],
     queryFn: () => fetchTasks({ include_done: showDone }),
-    refetchInterval: 30_000,
+    // 5s so the board follows tasks near-real-time (ready→running→done); at the
+    // old 30s a fast task could finish between polls and never appear to move.
+    refetchInterval: 5_000,
     placeholderData: keepPreviousData,
   })
 
