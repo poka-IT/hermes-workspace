@@ -5,12 +5,6 @@ import { deleteTask, getTask, moveTask, updateTask } from '../../server/tasks-st
 import { ensureLocalSession, appendLocalMessage, getLocalMessages } from '../../server/local-session-store'
 import { getSessionMessages } from '../../server/claude-dashboard-api'
 import type { TaskColumn, TaskPriority } from '../../server/tasks-store'
-import {
-  archiveKanbanTask,
-  getKanbanTask,
-  isDashboardKanbanAvailable,
-  updateKanbanTask,
-} from '../../server/tasks-kanban-bridge'
 
 function jsonResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -43,18 +37,6 @@ export const Route = createFileRoute('/api/hermes-tasks/$taskId')({
           return jsonResponse({ error: 'Unauthorized' }, 401)
         }
 
-        // Bridge to the agent kanban; fall back to the local store if the
-        // dashboard is unavailable.
-        if (await isDashboardKanbanAvailable()) {
-          try {
-            const task = await getKanbanTask(params.taskId)
-            if (!task) return jsonResponse({ error: 'Task not found' }, 404)
-            return jsonResponse({ task })
-          } catch {
-            // Fall through to the local store on a mid-call failure.
-          }
-        }
-
         const task = getTask(params.taskId)
         if (!task) return jsonResponse({ error: 'Task not found' }, 404)
         return jsonResponse({ task })
@@ -67,27 +49,6 @@ export const Route = createFileRoute('/api/hermes-tasks/$taskId')({
 
         try {
           const body = (await request.json()) as Record<string, unknown>
-
-          // Bridge column/title/description/priority/assignee changes to the
-          // agent kanban. Note: tags/due_date/position/session_id are not
-          // first-class on the agent kanban, so they are only honoured by the
-          // local-store fallback path.
-          if (await isDashboardKanbanAvailable()) {
-            try {
-              const task = await updateKanbanTask(params.taskId, {
-                title: typeof body.title === 'string' ? body.title : undefined,
-                description: typeof body.description === 'string' ? body.description : undefined,
-                column: isTaskColumn(body.column) ? body.column : undefined,
-                priority: isTaskPriority(body.priority) ? body.priority : undefined,
-                assignee: body.assignee === null || typeof body.assignee === 'string' ? body.assignee : undefined,
-              })
-              if (!task) return jsonResponse({ error: 'Task not found' }, 404)
-              return jsonResponse({ task })
-            } catch {
-              // Fall through to the local store on a mid-call failure.
-            }
-          }
-
           const task = updateTask(params.taskId, {
             title: typeof body.title === 'string' ? body.title : undefined,
             description: typeof body.description === 'string' ? body.description : undefined,
@@ -112,28 +73,6 @@ export const Route = createFileRoute('/api/hermes-tasks/$taskId')({
           return jsonResponse({ error: 'Unauthorized' }, 401)
         }
 
-        // The agent kanban has no hard delete — archive the task instead (set
-        // status to a terminal/archived state via the update path). Falls back
-        // to the local store's real delete when the dashboard is unavailable.
-        if (await isDashboardKanbanAvailable()) {
-          try {
-            const archived = await archiveKanbanTask(params.taskId)
-            if (!archived) return jsonResponse({ error: 'Task not found' }, 404)
-            return jsonResponse({ ok: true })
-          } catch {
-            // If the dashboard rejects the archive write, surface a clear 501
-            // rather than silently falling back to the local store (which does
-            // not own this task).
-            return jsonResponse(
-              {
-                error:
-                  'Agent kanban does not support deleting this task (archive write rejected).',
-              },
-              501,
-            )
-          }
-        }
-
         const deleted = deleteTask(params.taskId)
         if (!deleted) return jsonResponse({ error: 'Task not found' }, 404)
         return jsonResponse({ ok: true })
@@ -148,23 +87,7 @@ export const Route = createFileRoute('/api/hermes-tasks/$taskId')({
         const action = url.searchParams.get('action') || 'move'
 
         if (action === 'launch') {
-          // Resolve the task from the agent kanban when available, else the
-          // local store. NOTE: launch builds a chat-session briefing and is
-          // inherently local-session-store-backed (ensureLocalSession /
-          // appendLocalMessage). Agent-kanban tasks have no `session_id`, so
-          // the "prior session history" branch below is a no-op for them — the
-          // briefing simply starts fresh. This is acceptable: the dispatcher is
-          // the real execution path for kanban tasks; launch remains a manual
-          // "brief me in chat" shortcut on top of whichever store owns the task.
-          let task = null as Awaited<ReturnType<typeof getKanbanTask>>
-          if (await isDashboardKanbanAvailable()) {
-            try {
-              task = await getKanbanTask(params.taskId)
-            } catch {
-              // Fall through to the local store.
-            }
-          }
-          if (!task) task = getTask(params.taskId) ?? null
+          const task = getTask(params.taskId)
           if (!task) return jsonResponse({ error: 'Task not found' }, 404)
 
           const sessionId = `task-${task.id.slice(0, 8)}-${randomUUID().slice(0, 8)}`
@@ -231,7 +154,7 @@ export const Route = createFileRoute('/api/hermes-tasks/$taskId')({
             timestamp: Date.now(),
           })
 
-          return jsonResponse({ sessionId, briefing, task })
+          return jsonResponse({ sessionId, briefing, task: getTask(params.taskId) })
         }
 
         if (action !== 'move') {
@@ -243,21 +166,6 @@ export const Route = createFileRoute('/api/hermes-tasks/$taskId')({
           if (typeof body.column !== 'string') {
             return jsonResponse({ error: 'column is required' }, 400)
           }
-
-          // Bridge moves to the agent kanban (column → status); fall back to
-          // the local store when the dashboard is unavailable.
-          if (await isDashboardKanbanAvailable()) {
-            try {
-              const task = await updateKanbanTask(params.taskId, {
-                column: body.column as TaskColumn,
-              })
-              if (!task) return jsonResponse({ error: 'Task not found' }, 404)
-              return jsonResponse({ task })
-            } catch {
-              // Fall through to the local store on a mid-call failure.
-            }
-          }
-
           const task = moveTask(params.taskId, body.column as TaskColumn)
           if (!task) return jsonResponse({ error: 'Task not found' }, 404)
           return jsonResponse({ task })
