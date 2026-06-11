@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { isAuthenticated } from '../../server/auth-middleware'
-import { getClaudeTask, moveClaudeTask, updateClaudeTask } from '../../server/claude-tasks-backend'
+import { getClaudeTask, moveClaudeTask, respondToClaudeTask, updateClaudeTask } from '../../server/claude-tasks-backend'
 import type { TaskColumn, TaskPriority } from '../../server/claude-tasks-backend'
 
 function jsonResponse(data: unknown, status = 200) {
@@ -77,12 +77,19 @@ export const Route = createFileRoute('/api/claude-tasks/$taskId')({
 
         const url = new URL(request.url)
         const action = url.searchParams.get('action') || 'move'
-        if (action !== 'move') {
+        if (action !== 'move' && action !== 'respond') {
           return jsonResponse({ error: `Unsupported action: ${action}` }, 400)
         }
 
         try {
           const body = (await request.json()) as Record<string, unknown>
+          if (action === 'respond') {
+            const message = typeof body.message === 'string' ? body.message.trim() : ''
+            if (!message) return jsonResponse({ error: 'message is required' }, 400)
+            const task = await respondToClaudeTask(params.taskId, message)
+            if (!task) return jsonResponse({ error: 'Task not found' }, 404)
+            return jsonResponse({ task })
+          }
           if (!isTaskColumn(body.column)) {
             return jsonResponse({ error: 'column is required' }, 400)
           }

@@ -22,6 +22,12 @@ export type ClaudeTaskRecord = {
   created_by: string
   created_at: string
   updated_at: string
+  // Latest worker run outcome — the block reason / completion summary
+  // (latest_summary) and any crash/gave-up context (last_failure_error). These
+  // are what the detail view shows so a blocked card explains itself.
+  latest_run_summary?: string | null
+  latest_run_outcome?: string | null
+  latest_run_status?: string | null
 }
 
 type TaskFilters = {
@@ -93,6 +99,7 @@ function mapCardToTask(card: {
   createdBy: string
   createdAt: number
   updatedAt: number
+  latestRun?: { summary?: string | null; outcome?: string | null; status?: string | null } | null
 }): ClaudeTaskRecord {
   return {
     id: card.id,
@@ -107,6 +114,9 @@ function mapCardToTask(card: {
     created_by: card.createdBy,
     created_at: toIso(card.createdAt),
     updated_at: toIso(card.updatedAt),
+    latest_run_summary: card.latestRun?.summary ?? null,
+    latest_run_outcome: card.latestRun?.outcome ?? null,
+    latest_run_status: card.latestRun?.status ?? null,
   }
 }
 
@@ -163,4 +173,36 @@ export async function updateClaudeTask(taskId: string, updates: UpdateTaskInput)
 
 export async function moveClaudeTask(taskId: string, column: TaskColumn): Promise<ClaudeTaskRecord | null> {
   return updateClaudeTask(taskId, { column })
+}
+
+/**
+ * Answer a blocked/review task and re-queue it. The human guidance is appended
+ * to the task brief (which the re-dispatched worker reads verbatim) and the
+ * card is moved back to `todo` (→ Hermes status `ready`), so the dispatcher
+ * spawns a fresh worker that picks up exactly where the block left off. This
+ * reuses the proven body-edit + move write paths, so it works on whichever
+ * kanban backend is live (dashboard proxy or direct SQLite).
+ */
+export async function respondToClaudeTask(
+  taskId: string,
+  message: string,
+): Promise<ClaudeTaskRecord | null> {
+  const trimmed = message.trim()
+  if (!trimmed) return null
+  const current = await getClaudeTask(taskId)
+  if (!current) return null
+  const stamp = toIso(Date.now()).slice(0, 16).replace('T', ' ')
+  const footer = [
+    '',
+    '',
+    '---',
+    `**[Réponse humaine — ${stamp}]**`,
+    trimmed,
+    '',
+    'Reprends la tâche en tenant compte de cette réponse ci-dessus.',
+  ].join('\n')
+  return updateClaudeTask(taskId, {
+    description: `${current.description}${footer}`,
+    column: 'todo',
+  })
 }

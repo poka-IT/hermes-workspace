@@ -105,6 +105,16 @@ function dashboardTaskToCard(task: DashboardKanbanTask): SwarmKanbanCard {
   const updatedAt = normalizeTimestamp(
     task.started_at ?? task.completed_at ?? task.created_at,
   )
+  // Surface the worker's latest run outcome (block reason / completion summary).
+  // `latest_summary` carries the kanban_complete/kanban_block text;
+  // `last_failure_error` explains a crashed/gave-up run (e.g. exited without
+  // calling kanban_complete). Either is the WHY the detail view needs.
+  const summary = task.latest_summary ?? task.result ?? undefined
+  const failure = task.last_failure_error ?? undefined
+  const latestRun =
+    summary || failure
+      ? { summary: summary ?? null, outcome: failure ?? null, status: task.status }
+      : undefined
   return {
     id: task.id,
     title: task.title,
@@ -118,6 +128,7 @@ function dashboardTaskToCard(task: DashboardKanbanTask): SwarmKanbanCard {
     createdBy: task.created_by ?? 'hermes-kanban',
     createdAt,
     updatedAt,
+    latestRun,
   }
 }
 

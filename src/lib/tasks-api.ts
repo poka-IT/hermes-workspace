@@ -99,6 +99,11 @@ export type ClaudeTask = {
   created_at: string
   updated_at: string
   session_id?: string | null
+  // Latest worker run outcome — block reason / completion summary + any
+  // crash/gave-up context. Populated for blocked/review/done cards.
+  latest_run_summary?: string | null
+  latest_run_outcome?: string | null
+  latest_run_status?: string | null
 }
 
 export type CreateTaskInput = {
@@ -216,6 +221,23 @@ export async function moveTask(taskId: string, column: TaskColumn, movedBy = 'us
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error((body as { detail?: string }).detail || `Failed to move task: ${res.status}`)
+  }
+  return (await res.json()).task
+}
+
+// Answer a blocked/review task with human guidance and re-queue it. The message
+// is appended to the task brief and the card moves back to Ready so a fresh
+// worker is dispatched with the guidance in context.
+export async function respondToTask(taskId: string, message: string): Promise<ClaudeTask> {
+  const { base } = await resolveBackend()
+  const res = await fetch(`${base}/${taskId}?action=respond`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error((body as { error?: string; detail?: string }).error || (body as { detail?: string }).detail || `Failed to respond: ${res.status}`)
   }
   return (await res.json()).task
 }

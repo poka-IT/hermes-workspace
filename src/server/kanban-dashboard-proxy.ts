@@ -44,6 +44,13 @@ export type DashboardKanbanTask = {
   completed_at?: number | null
   workspace_kind?: string | null
   workspace_path?: string | null
+  // Latest run summary (kanban_complete/kanban_block text) + failure context.
+  // The dashboard plugin already returns these on both /board and /tasks/{id};
+  // they surface the WHY behind a blocked/review/done card so the UI can show
+  // it instead of leaving the user staring at a dead card.
+  latest_summary?: string | null
+  result?: string | null
+  last_failure_error?: string | null
 }
 
 export type DashboardKanbanBoardResponse = {

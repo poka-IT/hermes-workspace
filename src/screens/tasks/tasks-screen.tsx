@@ -8,6 +8,7 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { Add01Icon, CheckListIcon, RefreshIcon } from '@hugeicons/core-free-icons'
 import { TaskCard } from './task-card'
 import { TaskDialog } from './task-dialog'
+import { TaskDetail } from './task-detail'
 import type { ClaudeTask, CreateTaskInput, TaskAssignee, TaskColumn } from '@/lib/tasks-api'
 import { toast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
@@ -23,6 +24,7 @@ import {
   launchSession,
   linkSession,
   moveTask,
+  respondToTask,
   updateTask,
 } from '@/lib/tasks-api'
 import { stashPendingSend } from '@/screens/chat/pending-send'
@@ -52,6 +54,7 @@ export function TasksScreen() {
   const [showCreate, setShowCreate] = useState(false)
   const [createColumn, setCreateColumn] = useState<TaskColumn>('backlog')
   const [editingTask, setEditingTask] = useState<ClaudeTask | null>(null)
+  const [detailTask, setDetailTask] = useState<ClaudeTask | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dragOverColumn, setDragOverColumn] = useState<TaskColumn | null>(null)
   // Default to showing the Done column: completed tasks (and their results)
@@ -142,6 +145,21 @@ export function TasksScreen() {
     onSuccess: () => invalidate(),
     onError: (e) => toast(e instanceof Error ? e.message : 'Failed to move task', { type: 'error' }),
   })
+
+  const respondMutation = useMutation({
+    mutationFn: ({ id, message }: { id: string; message: string }) => respondToTask(id, message),
+    onSuccess: () => { invalidate(); toast('Réponse envoyée — worker relancé'); setDetailTask(null) },
+    onError: (e) => toast(e instanceof Error ? e.message : 'Échec de la réponse', { type: 'error' }),
+  })
+
+  const unblockMutation = useMutation({
+    mutationFn: (id: string) => moveTask(id, 'todo', 'user'),
+    onSuccess: () => { invalidate(); toast('Tâche débloquée'); setDetailTask(null) },
+    onError: (e) => toast(e instanceof Error ? e.message : 'Échec du déblocage', { type: 'error' }),
+  })
+
+  // Keep the open detail panel bound to fresh board data (it refetches every 5s).
+  const detailLive = detailTask ? (tasks.find(t => t.id === detailTask.id) ?? detailTask) : null
 
   function handleDragStart(e: React.DragEvent, taskId: string) {
     e.dataTransfer.setData('text/plain', taskId)
@@ -358,7 +376,7 @@ export function TasksScreen() {
                             assigneeLabels={assigneeLabels}
                             isDragging={draggingId === task.id}
                             onDragStart={e => handleDragStart(e, task.id)}
-                            onClick={() => setEditingTask(task)}
+                            onClick={() => setDetailTask(task)}
                           />
                         </motion.div>
                       ))
@@ -391,6 +409,31 @@ export function TasksScreen() {
         onSubmit={async (input) => {
           if (!editingTask) return
           await updateMutation.mutateAsync({ id: editingTask.id, input })
+        }}
+      />
+
+      {/* Detail panel — shows the worker's block reason / summary and lets you
+          answer-and-relaunch or unblock a stuck card without leaving the UI. */}
+      <TaskDetail
+        open={detailLive !== null}
+        onOpenChange={(open) => { if (!open) setDetailTask(null) }}
+        task={detailLive}
+        assigneeLabel={detailLive?.assignee ? (assigneeLabels[detailLive.assignee] ?? detailLive.assignee) : null}
+        isResponding={respondMutation.isPending}
+        isUnblocking={unblockMutation.isPending}
+        onRespond={async (message) => {
+          if (!detailLive) return
+          await respondMutation.mutateAsync({ id: detailLive.id, message })
+        }}
+        onUnblock={async () => {
+          if (!detailLive) return
+          await unblockMutation.mutateAsync(detailLive.id)
+        }}
+        onEdit={() => {
+          if (!detailLive) return
+          const t = detailLive
+          setDetailTask(null)
+          setEditingTask(t)
         }}
       />
     </div>
